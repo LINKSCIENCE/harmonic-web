@@ -49,9 +49,13 @@ function normalizeUrl(rawUrl: string): string {
   }
 }
 
+function stripWww(host: string): string {
+  return host.startsWith("www.") ? host.slice(4) : host;
+}
+
 function isInternal(rawUrl: string, baseDomain: string): boolean {
   try {
-    return new URL(rawUrl).hostname === baseDomain;
+    return stripWww(new URL(rawUrl).hostname) === stripWww(baseDomain);
   } catch {
     return false;
   }
