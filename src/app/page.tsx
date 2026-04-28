@@ -1,65 +1,162 @@
+"use client";
+
+import { useState } from "react";
+import { useRouter } from "next/navigation";
 import Image from "next/image";
 
-export default function Home() {
+export default function HomePage() {
+  const router = useRouter();
+  const [domain, setDomain] = useState("");
+  const [error, setError] = useState("");
+  const [submitting, setSubmitting] = useState(false);
+
+  function handleSubmit(e: React.FormEvent) {
+    e.preventDefault();
+    setError("");
+    const cleaned = domain.trim().replace(/^https?:\/\//, "").replace(/\/$/, "");
+    if (!cleaned || !cleaned.includes(".")) {
+      setError("Enter a valid domain like wldm.io");
+      return;
+    }
+    setSubmitting(true);
+    router.push(`/audit?domain=${encodeURIComponent(cleaned)}`);
+  }
+
   return (
-    <div className="flex flex-col flex-1 items-center justify-center bg-zinc-50 font-sans dark:bg-black">
-      <main className="flex flex-1 w-full max-w-3xl flex-col items-center justify-between py-32 px-16 bg-white dark:bg-black sm:items-start">
+    <main className="flex-1 flex flex-col">
+      {/* Top bar with logo */}
+      <header className="px-8 py-6 flex items-center justify-between max-w-7xl mx-auto w-full">
         <Image
-          className="dark:invert"
-          src="/next.svg"
-          alt="Next.js logo"
-          width={100}
-          height={20}
+          src="/wldm-logo.png"
+          alt="WLDM"
+          width={200}
+          height={59}
           priority
+          className="h-10 w-auto"
         />
-        <div className="flex flex-col items-center gap-6 text-center sm:items-start sm:text-left">
-          <h1 className="max-w-xs text-3xl font-semibold leading-10 tracking-tight text-black dark:text-zinc-50">
-            To get started, edit the page.tsx file.
-          </h1>
-          <p className="max-w-md text-lg leading-8 text-zinc-600 dark:text-zinc-400">
-            Looking for a starting point or more instructions? Head over to{" "}
-            <a
-              href="https://vercel.com/templates?framework=next.js&utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-              className="font-medium text-zinc-950 dark:text-zinc-50"
-            >
-              Templates
-            </a>{" "}
-            or the{" "}
-            <a
-              href="https://nextjs.org/learn?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-              className="font-medium text-zinc-950 dark:text-zinc-50"
-            >
-              Learning
-            </a>{" "}
-            center.
-          </p>
-        </div>
-        <div className="flex flex-col gap-4 text-base font-medium sm:flex-row">
-          <a
-            className="flex h-12 w-full items-center justify-center gap-2 rounded-full bg-foreground px-5 text-background transition-colors hover:bg-[#383838] dark:hover:bg-[#ccc] md:w-[158px]"
-            href="https://vercel.com/new?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
+        <span className="hero-badge">
+          <span className="dot" /> LINKSCIENCE
+        </span>
+      </header>
+
+      {/* Hero */}
+      <section className="flex-1 flex flex-col items-center justify-center px-6 py-16 text-center max-w-4xl mx-auto w-full">
+        <h1 className="font-[family-name:var(--font-chakra-petch)] font-extrabold text-5xl sm:text-6xl md:text-7xl leading-[1.05] tracking-[-0.02em] text-[var(--wldm-black)] mb-6">
+          Is your site&apos;s{" "}
+          <span className="highlight-fluro whitespace-nowrap">link architecture</span>{" "}
+          working against you?
+        </h1>
+
+        <p className="text-lg sm:text-xl text-[var(--wldm-ink-60)] max-w-2xl mb-10 leading-relaxed">
+          Enter your domain. We&apos;ll crawl your internal link graph and show you
+          exactly which pages capture authority — and which are silently starving your SEO.
+        </p>
+
+        <form onSubmit={handleSubmit} className="flex flex-col sm:flex-row gap-3 w-full max-w-xl mb-6">
+          <input
+            type="text"
+            value={domain}
+            onChange={(e) => setDomain(e.target.value)}
+            placeholder="yourdomain.com"
+            disabled={submitting}
+            className="flex-1 px-5 py-4 bg-white border-2 border-[var(--wldm-black)] rounded-full text-base focus:outline-none focus:border-[var(--wldm-blue-dark)] disabled:opacity-60"
+          />
+          <button
+            type="submit"
+            disabled={submitting}
+            className="btn-pill btn-fluro disabled:opacity-60 disabled:cursor-not-allowed"
           >
-            <Image
-              className="dark:invert"
-              src="/vercel.svg"
-              alt="Vercel logomark"
-              width={16}
-              height={16}
-            />
-            Deploy Now
-          </a>
-          <a
-            className="flex h-12 w-full items-center justify-center rounded-full border border-solid border-black/[.08] px-5 transition-colors hover:border-transparent hover:bg-black/[.04] dark:border-white/[.145] dark:hover:bg-[#1a1a1a] md:w-[158px]"
-            href="https://nextjs.org/docs?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            Documentation
-          </a>
+            {submitting ? "Loading…" : "Analyze →"}
+          </button>
+        </form>
+
+        {error && <p className="text-red-600 text-sm">{error}</p>}
+
+        <div className="mt-8 flex flex-wrap items-center justify-center gap-3">
+          <span className="chip">Harmonic Centrality</span>
+          <span className="chip">Real-time Crawl</span>
+          <span className="chip">PDF Export</span>
         </div>
-      </main>
-    </div>
+      </section>
+
+      {/* Feature cards */}
+      <section className="px-6 py-12 max-w-6xl mx-auto w-full">
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+          {[
+            {
+              icon: "📈",
+              title: "Graph Metrics",
+              desc: "Harmonic centrality, PageRank, betweenness, closeness, and HITS scores — all the math, none of the spreadsheets.",
+            },
+            {
+              icon: "🕸️",
+              title: "3D Visualization",
+              desc: "Interactive WebGL graph. Spin your site's link architecture and spot orphan pages instantly.",
+            },
+            {
+              icon: "📄",
+              title: "Branded PDF",
+              desc: "Download a client-ready report with all findings and concrete recommendations.",
+            },
+          ].map((f) => (
+            <div key={f.title} className="card-brutal">
+              <div className="inline-block bg-[var(--wldm-blue)] border border-[var(--wldm-black)] rounded-lg px-3 py-1 text-2xl mb-3">
+                {f.icon}
+              </div>
+              <h3 className="font-[family-name:var(--font-chakra-petch)] font-bold text-xl mb-2 text-[var(--wldm-black)]">
+                {f.title}
+              </h3>
+              <p className="text-[var(--wldm-ink-60)] text-sm leading-relaxed">{f.desc}</p>
+            </div>
+          ))}
+        </div>
+      </section>
+
+      {/* How it works */}
+      <section className="px-6 py-12 max-w-4xl mx-auto w-full">
+        <div
+          className="rounded-2xl p-7 border border-[var(--wldm-black)]"
+          style={{
+            background: "var(--wldm-blue)",
+            boxShadow: "4px 4px 0 var(--wldm-black)",
+          }}
+        >
+          <div className="font-[family-name:var(--font-chakra-petch)] font-bold uppercase tracking-wider text-sm mb-4">
+            How it works
+          </div>
+          <ol className="space-y-2 text-[var(--wldm-black)]">
+            <li>
+              <strong>1.</strong> Enter your domain — that&apos;s it.
+            </li>
+            <li>
+              <strong>2.</strong> We crawl up to 100 internal pages (BFS, real Chrome UA + proxy fallback).
+            </li>
+            <li>
+              <strong>3.</strong> Build a directed graph and compute harmonic centrality:{" "}
+              <code className="bg-[var(--wldm-beige-50)] px-2 py-0.5 rounded border border-[var(--wldm-black)]">
+                H(v) = Σ 1/d(v,u)
+              </code>
+            </li>
+            <li>
+              <strong>4.</strong> Compare HC vs PageRank, betweenness, HITS, closeness — and spot the orphans.
+            </li>
+            <li>
+              <strong>5.</strong> Download a branded PDF report.
+            </li>
+          </ol>
+        </div>
+      </section>
+
+      <footer className="px-8 py-8 text-center text-xs text-[var(--wldm-ink-40)]">
+        <Image
+          src="/wldm-logo.png"
+          alt="WLDM"
+          width={120}
+          height={35}
+          className="h-7 w-auto mx-auto mb-3 opacity-60"
+        />
+        <p>LinkScience · Internal Link Graph Analysis · WLDM 2026</p>
+      </footer>
+    </main>
   );
 }
