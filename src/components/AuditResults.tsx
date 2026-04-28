@@ -5,6 +5,15 @@ import dynamic from "next/dynamic";
 import Link from "next/link";
 import type { AuditResult } from "@/lib/types";
 import { generateAuditPdf } from "@/lib/pdf";
+import {
+  TopPagesChart,
+  DistributionChart,
+  HcVsPrChart,
+  TierDonut,
+  CentralityRadar,
+  DepthChart,
+  LinkProfileChart,
+} from "./Charts";
 
 const HCGraph3D = dynamic(() => import("./HCGraph3D"), {
   ssr: false,
@@ -15,31 +24,43 @@ const HCGraph3D = dynamic(() => import("./HCGraph3D"), {
   ),
 });
 
+const HCSkyline3D = dynamic(() => import("./HCSkyline3D"), {
+  ssr: false,
+  loading: () => (
+    <div className="w-full h-[500px] rounded-2xl bg-[var(--wldm-black)] flex items-center justify-center text-[var(--wldm-taupe)]">
+      Loading skyline…
+    </div>
+  ),
+});
+
+interface Props {
+  result: AuditResult;
+}
+
+const TABS = [
+  { id: "overview", label: "Overview" },
+  { id: "top", label: "Top Pages" },
+  { id: "distribution", label: "Distribution" },
+  { id: "scatter", label: "HC vs PageRank" },
+  { id: "depth", label: "Click Depth" },
+  { id: "link-profile", label: "Link Profile" },
+  { id: "tier", label: "Tier Breakdown" },
+  { id: "radar", label: "Centrality Radar" },
+  { id: "graph3d", label: "3D Network" },
+  { id: "skyline", label: "3D Skyline" },
+] as const;
+type TabId = (typeof TABS)[number]["id"];
+
 const TIER_BADGE: Record<string, string> = {
   high: "bg-[var(--wldm-fluro)] border-[var(--wldm-black)]",
   medium: "bg-[var(--wldm-blue)] border-[var(--wldm-black)]",
   low: "bg-white border-[var(--wldm-black)]",
 };
 
-interface Props {
-  result: AuditResult;
-}
-
 export default function AuditResults({ result }: Props) {
   const { analysis, domain, elapsedMs, proxyUsed } = result;
   const [generatingPdf, setGeneratingPdf] = useState(false);
-
-  async function handleDownloadPdf() {
-    setGeneratingPdf(true);
-    try {
-      await generateAuditPdf(result);
-    } catch (e) {
-      console.error("PDF generation failed", e);
-      alert("Could not generate PDF. Try refresh.");
-    } finally {
-      setGeneratingPdf(false);
-    }
-  }
+  const [activeTab, setActiveTab] = useState<TabId>("overview");
 
   const stats = useMemo(() => {
     const tiers = { high: 0, medium: 0, low: 0 };
@@ -52,6 +73,18 @@ export default function AuditResults({ result }: Props) {
     analysis.nodes.forEach((n) => m.set(n.cluster, (m.get(n.cluster) ?? 0) + 1));
     return [...m.entries()].sort((a, b) => b[1] - a[1]).slice(0, 8);
   }, [analysis.nodes]);
+
+  async function handleDownloadPdf() {
+    setGeneratingPdf(true);
+    try {
+      await generateAuditPdf(result);
+    } catch (e) {
+      console.error("PDF generation failed", e);
+      alert("Could not generate PDF. Try refresh.");
+    } finally {
+      setGeneratingPdf(false);
+    }
+  }
 
   return (
     <div className="max-w-7xl mx-auto px-6 py-10">
@@ -80,7 +113,7 @@ export default function AuditResults({ result }: Props) {
       </div>
 
       {/* KPI row */}
-      <div className="grid grid-cols-2 md:grid-cols-5 gap-4 mb-10">
+      <div className="grid grid-cols-2 md:grid-cols-5 gap-4 mb-8">
         <Kpi label="Pages" value={analysis.totalPages} />
         <Kpi label="Links" value={analysis.totalLinks} />
         <Kpi label="Density" value={analysis.density.toFixed(3)} />
@@ -88,11 +121,158 @@ export default function AuditResults({ result }: Props) {
         <Kpi label="Crawl time" value={`${(elapsedMs / 1000).toFixed(1)}s`} />
       </div>
 
-      {/* Tier bar */}
+      {/* Diagnostic warnings */}
+      {analysis.diagnostics.recommendations.length > 0 && (
+        <Section title="Findings & Recommendations">
+          <div className="space-y-3">
+            {analysis.diagnostics.recommendations.map((rec, i) => (
+              <div
+                key={i}
+                className="rounded-2xl p-4 border border-[var(--wldm-black)] flex gap-3 items-start"
+                style={{
+                  background: i === 0 ? "var(--wldm-fluro)" : "var(--wldm-blue)",
+                  boxShadow: "4px 4px 0 var(--wldm-black)",
+                }}
+              >
+                <span className="font-[family-name:var(--font-chakra-petch)] font-bold text-2xl tabular-nums">
+                  {String(i + 1).padStart(2, "0")}
+                </span>
+                <p className="text-sm text-[var(--wldm-black)] leading-relaxed flex-1">{rec}</p>
+              </div>
+            ))}
+          </div>
+        </Section>
+      )}
+
+      {/* Tabs */}
+      <div className="mb-1 mt-4 flex flex-wrap gap-1 border-b-2 border-[var(--wldm-black)]">
+        {TABS.map((tab) => (
+          <button
+            key={tab.id}
+            onClick={() => setActiveTab(tab.id)}
+            className={`px-4 py-2 rounded-t-lg font-[family-name:var(--font-chakra-petch)] font-semibold text-sm transition border-2 border-b-0 ${
+              activeTab === tab.id
+                ? "bg-[var(--wldm-blue)] border-[var(--wldm-black)] text-[var(--wldm-black)]"
+                : "bg-transparent border-transparent text-[var(--wldm-ink-60)] hover:text-[var(--wldm-black)]"
+            }`}
+          >
+            {tab.label}
+          </button>
+        ))}
+      </div>
+
+      <div className="pt-6">
+        {activeTab === "overview" && (
+          <Overview analysis={analysis} stats={stats} clusters={clusters} />
+        )}
+
+        {activeTab === "top" && (
+          <Section title="Top Pages by Harmonic Centrality">
+            <TopPagesChart nodes={analysis.nodes} n={20} />
+            <TopPagesTable result={result} />
+          </Section>
+        )}
+
+        {activeTab === "distribution" && (
+          <Section title="Harmonic Centrality Distribution">
+            <DistributionChart nodes={analysis.nodes} />
+            <p className="text-sm text-[var(--wldm-ink-60)] mt-3">
+              {analysis.diagnostics.hcCompressed
+                ? "⚠️ Distribution is compressed — most pages have similar HC. Healthy sites usually show a long-tail with a few high-authority pages."
+                : "Healthy distribution typically shows a long tail — most pages with low HC, a few high-HC hubs at the right end."}
+            </p>
+          </Section>
+        )}
+
+        {activeTab === "scatter" && (
+          <Section title="HC vs PageRank">
+            <HcVsPrChart nodes={analysis.nodes} degenerate={analysis.diagnostics.pagerankDegenerate} />
+            {!analysis.diagnostics.pagerankDegenerate && (
+              <div
+                className="rounded-2xl p-4 border border-[var(--wldm-black)] text-sm mt-4"
+                style={{ background: "var(--wldm-blue)", boxShadow: "4px 4px 0 var(--wldm-black)" }}
+              >
+                <strong className="block mb-1 font-[family-name:var(--font-chakra-petch)] uppercase">
+                  How to read this
+                </strong>
+                <strong>Top-right</strong> = highly reachable AND authoritative (your strongest pages).{" "}
+                <strong>High HC, low PR</strong> = easy to find but lacks authority — build more external links.{" "}
+                <strong>Low HC, high PR</strong> = receives authority but hard to discover — improve internal linking.
+              </div>
+            )}
+          </Section>
+        )}
+
+        {activeTab === "depth" && (
+          <Section title="Click Depth from Homepage">
+            <DepthChart histogram={analysis.depthHistogram} />
+          </Section>
+        )}
+
+        {activeTab === "link-profile" && (
+          <Section title="In-Links vs Out-Links">
+            <LinkProfileChart nodes={analysis.nodes} />
+          </Section>
+        )}
+
+        {activeTab === "tier" && (
+          <Section title="Authority Tier Breakdown">
+            <TierDonut nodes={analysis.nodes} />
+          </Section>
+        )}
+
+        {activeTab === "radar" && (
+          <Section title="Top 5 Pages — Centrality Radar">
+            <CentralityRadar nodes={analysis.nodes} />
+          </Section>
+        )}
+
+        {activeTab === "graph3d" && (
+          <Section title="Your Link Graph in 3D">
+            <p className="text-sm text-[var(--wldm-ink-60)] mb-4">
+              Drag to rotate · scroll to zoom · click any node for details. Pulsing red nodes are{" "}
+              <strong>orphans</strong> with zero incoming links.
+            </p>
+            <HCGraph3D nodes={analysis.nodes} edges={analysis.edges} />
+          </Section>
+        )}
+
+        {activeTab === "skyline" && (
+          <Section title="HC Skyline by URL Cluster">
+            <p className="text-sm text-[var(--wldm-ink-60)] mb-4">
+              Bar height = harmonic centrality. Each cluster (URL section) shows its top pages. Quick way to see which sections of your site capture authority.
+            </p>
+            <HCSkyline3D nodes={analysis.nodes} />
+          </Section>
+        )}
+      </div>
+
+      <div className="mt-12 pt-6 border-t border-[var(--wldm-ink-40)] text-xs text-[var(--wldm-ink-40)] flex flex-wrap justify-between gap-2">
+        <span>
+          Crawl summary: {result.totalRequests} requests, {proxyUsed} via proxy fallback,{" "}
+          {(elapsedMs / 1000).toFixed(1)}s total.
+        </span>
+        <span>WLDM.IO · Harmonic Centrality</span>
+      </div>
+    </div>
+  );
+}
+
+function Overview({
+  analysis,
+  stats,
+  clusters,
+}: {
+  analysis: AuditResult["analysis"];
+  stats: Record<string, number>;
+  clusters: Array<[string, number]>;
+}) {
+  return (
+    <>
       <Section title="Authority Tiers">
         <div className="flex gap-2 mb-3">
           {(["high", "medium", "low"] as const).map((t) => {
-            const pct = (stats[t] / analysis.totalPages) * 100;
+            const pct = (stats[t] / Math.max(analysis.totalPages, 1)) * 100;
             return (
               <div
                 key={t}
@@ -108,60 +288,12 @@ export default function AuditResults({ result }: Props) {
           <strong>{stats.high}</strong> high-authority pages capture most of your internal link equity.{" "}
           {stats.low > 0 && (
             <>
-              <strong>{stats.low}</strong> low-tier pages — likely orphans or dead-ends —
-              are silently bleeding crawl budget.
+              <strong>{stats.low}</strong> low-tier pages — likely orphans or dead-ends — are silently bleeding crawl budget.
             </>
           )}
         </p>
       </Section>
 
-      {/* 3D graph */}
-      <Section title="Your Link Graph in 3D">
-        <p className="text-sm text-[var(--wldm-ink-60)] mb-4">
-          Drag to rotate · scroll to zoom · click any node for details. Pulsing red nodes are{" "}
-          <strong>orphans</strong> with zero incoming links.
-        </p>
-        <HCGraph3D nodes={analysis.nodes} edges={analysis.edges} />
-      </Section>
-
-      {/* Top pages */}
-      <Section title="Top Pages by Harmonic Centrality">
-        <div className="card-brutal !p-0 overflow-hidden">
-          <table className="w-full text-sm">
-            <thead className="bg-[var(--wldm-blue-pale)] font-[family-name:var(--font-chakra-petch)] uppercase tracking-wider text-xs">
-              <tr>
-                <th className="text-left p-3 w-10">#</th>
-                <th className="text-left p-3">URL</th>
-                <th className="text-right p-3">HC</th>
-                <th className="text-right p-3">PR</th>
-                <th className="text-right p-3 hidden sm:table-cell">In</th>
-                <th className="text-right p-3 hidden sm:table-cell">Out</th>
-              </tr>
-            </thead>
-            <tbody>
-              {analysis.topPages.slice(0, 15).map((n, i) => (
-                <tr key={n.url} className="border-t border-[var(--wldm-blue-pale)] hover:bg-[var(--wldm-beige-50)]">
-                  <td className="p-3 text-[var(--wldm-ink-40)] tabular-nums">{i + 1}</td>
-                  <td className="p-3">
-                    <a href={n.url} target="_blank" rel="noopener noreferrer" className="text-[var(--wldm-blue-dark)] hover:underline break-all">
-                      {n.title || urlPath(n.url)}
-                    </a>
-                    <div className="text-xs text-[var(--wldm-ink-40)] truncate max-w-md">{urlPath(n.url)}</div>
-                  </td>
-                  <td className="p-3 text-right tabular-nums font-semibold">
-                    <HCBar value={n.harmonic} />
-                  </td>
-                  <td className="p-3 text-right tabular-nums text-[var(--wldm-ink-60)]">{n.pagerank.toFixed(4)}</td>
-                  <td className="p-3 text-right tabular-nums hidden sm:table-cell">{n.inDegree}</td>
-                  <td className="p-3 text-right tabular-nums hidden sm:table-cell">{n.outDegree}</td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
-      </Section>
-
-      {/* Clusters */}
       <Section title="URL Clusters">
         <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
           {clusters.map(([name, count]) => (
@@ -177,16 +309,14 @@ export default function AuditResults({ result }: Props) {
         </div>
       </Section>
 
-      {/* Orphans warning */}
       {analysis.orphans.length > 0 && (
-        <Section title="Orphan Pages — No Internal Links Pointing To Them">
+        <Section title={`${analysis.orphans.length} Orphan Pages — Zero Internal Links`}>
           <div
             className="rounded-2xl p-5 border border-[var(--wldm-black)]"
             style={{ background: "var(--wldm-fluro)", boxShadow: "4px 4px 0 var(--wldm-black)" }}
           >
             <p className="text-sm text-[var(--wldm-black)] mb-3">
-              These <strong>{analysis.orphans.length}</strong> pages have zero incoming internal links.
-              They&apos;re invisible to crawlers and harvesters — fix by adding internal links from high-HC pages.
+              These pages have zero incoming internal links. They&apos;re invisible to crawlers — fix by adding internal links from high-HC pages.
             </p>
             <ul className="text-sm space-y-1 max-h-48 overflow-y-auto">
               {analysis.orphans.slice(0, 20).map((o) => (
@@ -200,15 +330,44 @@ export default function AuditResults({ result }: Props) {
           </div>
         </Section>
       )}
+    </>
+  );
+}
 
-      {/* Footer */}
-      <div className="mt-12 pt-6 border-t border-[var(--wldm-ink-40)] text-xs text-[var(--wldm-ink-40)] flex flex-wrap justify-between gap-2">
-        <span>
-          Crawl summary: {result.totalRequests} requests, {proxyUsed} via proxy fallback,{" "}
-          {(elapsedMs / 1000).toFixed(1)}s total.
-        </span>
-        <span>WLDM.IO · Harmonic Centrality</span>
-      </div>
+function TopPagesTable({ result }: { result: AuditResult }) {
+  return (
+    <div className="card-brutal !p-0 overflow-hidden mt-6">
+      <table className="w-full text-sm">
+        <thead className="bg-[var(--wldm-blue-pale)] font-[family-name:var(--font-chakra-petch)] uppercase tracking-wider text-xs">
+          <tr>
+            <th className="text-left p-3 w-10">#</th>
+            <th className="text-left p-3">URL</th>
+            <th className="text-right p-3">HC</th>
+            <th className="text-right p-3">PR</th>
+            <th className="text-right p-3 hidden sm:table-cell">In</th>
+            <th className="text-right p-3 hidden sm:table-cell">Out</th>
+          </tr>
+        </thead>
+        <tbody>
+          {result.analysis.topPages.slice(0, 20).map((n, i) => (
+            <tr key={n.url} className="border-t border-[var(--wldm-blue-pale)] hover:bg-[var(--wldm-beige-50)]">
+              <td className="p-3 text-[var(--wldm-ink-40)] tabular-nums">{i + 1}</td>
+              <td className="p-3">
+                <a href={n.url} target="_blank" rel="noopener noreferrer" className="text-[var(--wldm-blue-dark)] hover:underline break-all">
+                  {n.title || urlPath(n.url)}
+                </a>
+                <div className="text-xs text-[var(--wldm-ink-40)] truncate max-w-md">{urlPath(n.url)}</div>
+              </td>
+              <td className="p-3 text-right tabular-nums font-semibold">
+                <HCBar value={n.harmonic} />
+              </td>
+              <td className="p-3 text-right tabular-nums text-[var(--wldm-ink-60)]">{n.pagerank.toFixed(4)}</td>
+              <td className="p-3 text-right tabular-nums hidden sm:table-cell">{n.inDegree}</td>
+              <td className="p-3 text-right tabular-nums hidden sm:table-cell">{n.outDegree}</td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
     </div>
   );
 }

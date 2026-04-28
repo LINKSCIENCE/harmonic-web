@@ -19,6 +19,18 @@ export interface NodeMetrics {
   tier: "high" | "medium" | "low";
   cluster: string;
   isOrphan: boolean;
+  /** Click depth from homepage (BFS, undirected). -1 = unreachable. */
+  depth: number;
+}
+
+export interface Diagnostics {
+  pagerankDegenerate: boolean;
+  /** True when HC values are compressed (variance very low) */
+  hcCompressed: boolean;
+  /** Rank of homepage in HC (1 = top). null if homepage not found. */
+  homepageRank: number | null;
+  /** Recommendations (data-driven action items) */
+  recommendations: string[];
 }
 
 export interface GraphAnalysis {
@@ -30,6 +42,9 @@ export interface GraphAnalysis {
   density: number;
   totalPages: number;
   totalLinks: number;
+  diagnostics: Diagnostics;
+  /** Distribution of click depths from homepage */
+  depthHistogram: Array<{ depth: number; count: number }>;
 }
 
 /**
@@ -80,10 +95,29 @@ function clusterFor(url: string): string {
   }
 }
 
+function computeDepthFromRoot(g: Graph, root: string): Map<string, number> {
+  const dist = new Map<string, number>();
+  if (!g.hasNode(root)) return dist;
+  dist.set(root, 0);
+  const queue: string[] = [root];
+  while (queue.length) {
+    const u = queue.shift()!;
+    const d = dist.get(u)!;
+    g.forEachNeighbor(u, (v) => {
+      if (!dist.has(v)) {
+        dist.set(v, d + 1);
+        queue.push(v);
+      }
+    });
+  }
+  return dist;
+}
+
 export function analyzeGraph(
   edges: Array<[string, string]>,
   visited: string[],
-  pageInfo: Record<string, { title?: string }>
+  pageInfo: Record<string, { title?: string }>,
+  startUrl?: string
 ): GraphAnalysis {
   const g = new Graph({ type: "directed", multi: false, allowSelfLoops: false });
   for (const u of visited) {
@@ -106,6 +140,8 @@ export function analyzeGraph(
       density: 0,
       totalPages: 0,
       totalLinks: 0,
+      diagnostics: { pagerankDegenerate: false, hcCompressed: false, homepageRank: null, recommendations: [] },
+      depthHistogram: [],
     };
   }
 
@@ -163,10 +199,14 @@ export function analyzeGraph(
   const highCutoff = sortedHc[Math.floor(sortedHc.length * 0.25)]?.[1] ?? 1;
   const lowCutoff = sortedHc[Math.floor(sortedHc.length * 0.75)]?.[1] ?? 0;
 
+  // Click depth from homepage (BFS over undirected)
+  const homepage = startUrl && ug.hasNode(startUrl) ? startUrl : sortedHc[0]?.[0];
+  const depthMap = homepage ? computeDepthFromRoot(ug, homepage) : new Map<string, number>();
+
   const nodes: NodeMetrics[] = g.nodes().map((url) => {
     const inDeg = g.inDegree(url);
     const outDeg = g.outDegree(url);
-    const isOrphan = inDeg === 0 && url !== sortedHc[0]?.[0]; // homepage exception
+    const isOrphan = inDeg === 0 && url !== homepage;
     const hc = harmonicNorm.get(url) ?? 0;
     let tier: "high" | "medium" | "low" = "medium";
     if (isOrphan) tier = "low";
@@ -187,12 +227,73 @@ export function analyzeGraph(
       tier,
       cluster: clusterFor(url),
       isOrphan,
+      depth: depthMap.has(url) ? (depthMap.get(url) as number) : -1,
     };
   });
 
-  const topPages = [...nodes].sort((a, b) => b.harmonic - a.harmonic).slice(0, 20);
-  const orphans = nodes.filter((n) => n.isOrphan);
+  const topPages = [...nodes].sort((a, b) => b.harmonic - a.harmonic).slice(0, 25);
+  const orphans = nodes.filter((nd) => nd.isOrphan);
   const density = n > 1 ? g.size / (n * (n - 1)) : 0;
+
+  // Depth histogram
+  const depthBuckets = new Map<number, number>();
+  nodes.forEach((nd) => {
+    const d = nd.depth >= 0 ? nd.depth : -1;
+    depthBuckets.set(d, (depthBuckets.get(d) ?? 0) + 1);
+  });
+  const depthHistogram = [...depthBuckets.entries()]
+    .sort((a, b) => a[0] - b[0])
+    .map(([depth, count]) => ({ depth, count }));
+
+  // ── Diagnostics ────────────────────────────────────────────────
+  // HC compression: stdev / mean. Low ratio = compressed.
+  const hcVals = nodes.map((nd) => nd.harmonic);
+  const hcMean = hcVals.reduce((a, b) => a + b, 0) / Math.max(hcVals.length, 1);
+  const hcVariance = hcVals.reduce((a, b) => a + (b - hcMean) ** 2, 0) / Math.max(hcVals.length, 1);
+  const hcStd = Math.sqrt(hcVariance);
+  const hcCompressed = hcMean > 0 ? hcStd / hcMean < 0.15 && nodes.length > 5 : false;
+
+  // Homepage rank in HC
+  const hcRanked = [...nodes].sort((a, b) => b.harmonic - a.harmonic);
+  const hpIdx = homepage ? hcRanked.findIndex((nd) => nd.url === homepage) : -1;
+  const homepageRank = hpIdx >= 0 ? hpIdx + 1 : null;
+
+  // Recommendations
+  const recommendations: string[] = [];
+  if (orphans.length > 0) {
+    recommendations.push(
+      `${orphans.length} orphan page${orphans.length === 1 ? "" : "s"} have zero internal links pointing to them. Add links from your top-HC pages to make them discoverable.`
+    );
+  }
+  if (homepageRank !== null && homepageRank > 5) {
+    recommendations.push(
+      `Your homepage ranks #${homepageRank} by harmonic centrality. Healthy sites usually keep the homepage in the top 3 — review which pages are over-linked from your nav.`
+    );
+  }
+  if (hcCompressed) {
+    recommendations.push(
+      `Harmonic centrality is compressed (std/mean = ${(hcStd / Math.max(hcMean, 1e-9)).toFixed(2)}). Most pages have similar reachability — your site lacks a clear authority hierarchy. Concentrate internal links on a smaller set of strategic pages.`
+    );
+  }
+  if (pagerankDegenerate) {
+    recommendations.push(
+      `PageRank values are uniform (no rank concentration detected). Likely a small or fully connected site — add more discriminating internal links.`
+    );
+  }
+  // Deep pages
+  const deepPages = nodes.filter((nd) => nd.depth > 4).length;
+  if (deepPages > 0 && nodes.length > 10) {
+    recommendations.push(
+      `${deepPages} page${deepPages === 1 ? " sits" : "s sit"} more than 4 clicks from the homepage — Google may crawl them less. Consider linking them from a higher-traffic hub.`
+    );
+  }
+  // High HC, low PR
+  const inverted = nodes.filter((nd) => nd.harmonic > 0.7 && nd.pagerank > 0 && nd.pagerank < 1 / Math.max(n, 1));
+  if (inverted.length > 0 && !pagerankDegenerate) {
+    recommendations.push(
+      `${inverted.length} page${inverted.length === 1 ? " has" : "s have"} high HC but low PageRank — easy to discover internally but lacks external authority. Build backlinks to these pages.`
+    );
+  }
 
   return {
     nodes,
@@ -203,5 +304,12 @@ export function analyzeGraph(
     density,
     totalPages: n,
     totalLinks: g.size,
+    diagnostics: {
+      pagerankDegenerate,
+      hcCompressed,
+      homepageRank,
+      recommendations,
+    },
+    depthHistogram,
   };
 }

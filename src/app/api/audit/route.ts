@@ -49,7 +49,7 @@ export async function POST(req: NextRequest) {
 
         send("analyzing", { pages: result.visited.length, links: result.edges.length });
 
-        const analysis = analyzeGraph(result.edges, result.visited, result.pageInfo);
+        const analysis = analyzeGraph(result.edges, result.visited, result.pageInfo, result.startUrl);
 
         send("done", {
           domain: result.baseDomain,
@@ -66,6 +66,8 @@ export async function POST(req: NextRequest) {
             orphans: analysis.orphans,
             nodes: analysis.nodes,
             edges: analysis.edges,
+            diagnostics: analysis.diagnostics,
+            depthHistogram: analysis.depthHistogram,
           },
         });
         controller.close();

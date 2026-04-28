@@ -1,4 +1,4 @@
-import type { NodeMetrics } from "./graph";
+import type { NodeMetrics, Diagnostics } from "./graph";
 
 export interface AuditResult {
   domain: string;
@@ -15,6 +15,8 @@ export interface AuditResult {
     orphans: NodeMetrics[];
     nodes: NodeMetrics[];
     edges: Array<{ source: string; target: string }>;
+    diagnostics: Diagnostics;
+    depthHistogram: Array<{ depth: number; count: number }>;
   };
 }
 
