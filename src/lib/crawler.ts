@@ -72,29 +72,59 @@ async function proxyFetch(url: string, apiKey: string, timeoutMs = 60000): Promi
   }
 }
 
+const BOT_CHALLENGE_RE = /bot.{0,3}verif|just a moment|checking your browser|attention required|cloudflare|captcha|recaptcha|access denied/i;
+
+function looksLikeBotChallenge(html: string): boolean {
+  if (html.length < 5000 && BOT_CHALLENGE_RE.test(html)) return true;
+  // Very small HTML with no links is also suspicious
+  if (html.length < 2500 && !/<a\s+[^>]*href=/i.test(html)) return true;
+  return false;
+}
+
+interface FetchOutcome {
+  resp: Response | null;
+  body: string | null;
+  viaProxy: boolean;
+}
+
 async function smartFetch(
   url: string,
   apiKey: string | undefined,
   timeoutMs = 12000
-): Promise<{ resp: Response | null; viaProxy: boolean }> {
+): Promise<FetchOutcome> {
   // Try direct
   try {
     const ctrl = new AbortController();
     const timer = setTimeout(() => ctrl.abort(), timeoutMs);
     const r = await fetch(url, { headers: DEFAULT_HEADERS, signal: ctrl.signal, redirect: "follow" });
     clearTimeout(timer);
-    if (r.status === 200) return { resp: r, viaProxy: false };
-    if (!BLOCKED_STATUS.has(r.status)) return { resp: r, viaProxy: false };
-    // blocked → fall through
+    const ct = r.headers.get("content-type") || "";
+    if (r.status === 200 && ct.includes("text/html")) {
+      const body = await r.text();
+      if (!looksLikeBotChallenge(body)) {
+        return { resp: r, body, viaProxy: false };
+      }
+      // looks like bot challenge → fall through to proxy
+    } else if (r.status === 200) {
+      // Non-html 200 (e.g., image)
+      return { resp: r, body: null, viaProxy: false };
+    } else if (!BLOCKED_STATUS.has(r.status)) {
+      return { resp: r, body: null, viaProxy: false };
+    }
   } catch {
     // network error → fall through
   }
-  if (!apiKey) return { resp: null, viaProxy: false };
+  if (!apiKey) return { resp: null, body: null, viaProxy: false };
   try {
     const r = await proxyFetch(url, apiKey, timeoutMs * 4);
-    return { resp: r, viaProxy: true };
+    let body: string | null = null;
+    const ct = r.headers.get("content-type") || "";
+    if (r.status === 200 && ct.includes("text/html")) {
+      body = await r.text();
+    }
+    return { resp: r, body, viaProxy: true };
   } catch {
-    return { resp: null, viaProxy: false };
+    return { resp: null, body: null, viaProxy: false };
   }
 }
 
@@ -125,7 +155,7 @@ export async function crawlWebsite(rawStartUrl: string, opts: CrawlOptions = {})
     if (visited.has(url)) continue;
 
     totalRequests++;
-    const { resp, viaProxy } = await smartFetch(url, opts.scraperApiKey);
+    const { resp, body, viaProxy } = await smartFetch(url, opts.scraperApiKey);
     if (viaProxy) proxyUsed++;
     if (!resp || resp.status !== 200) {
       visited.add(url); // mark to avoid retry
@@ -133,13 +163,11 @@ export async function crawlWebsite(rawStartUrl: string, opts: CrawlOptions = {})
     }
     const ct = resp.headers.get("content-type") || "";
     if (!ct.includes("text/html")) continue;
-
-    let html: string;
-    try {
-      html = await resp.text();
-    } catch {
+    if (!body) {
+      visited.add(url);
       continue;
     }
+    const html = body;
 
     visited.add(url);
     const $ = cheerio.load(html);
