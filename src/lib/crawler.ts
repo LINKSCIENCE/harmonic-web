@@ -32,6 +32,8 @@ export interface CrawlResult {
 export interface CrawlOptions {
   maxPages?: number;
   delayMs?: number;
+  /** Max concurrent fetches (default 5) */
+  concurrency?: number;
   scraperApiKey?: string;
   onProgress?: (state: { visited: number; max: number; currentUrl: string; viaProxy: boolean }) => void;
   signal?: AbortSignal;
@@ -130,7 +132,8 @@ async function smartFetch(
 
 export async function crawlWebsite(rawStartUrl: string, opts: CrawlOptions = {}): Promise<CrawlResult> {
   const maxPages = opts.maxPages ?? 100;
-  const delayMs = opts.delayMs ?? 200;
+  const delayMs = opts.delayMs ?? 0;
+  const concurrency = Math.max(1, Math.min(opts.concurrency ?? 5, 10));
   const t0 = Date.now();
 
   // Add protocol if missing
@@ -143,41 +146,48 @@ export async function crawlWebsite(rawStartUrl: string, opts: CrawlOptions = {})
   const baseDomain = new URL(startUrl).hostname;
 
   const visited = new Set<string>();
+  /** URLs that are claimed (in-flight or done) — prevents duplicate fetches */
+  const claimed = new Set<string>();
   const edges: Array<[string, string]> = [];
   const pageInfo: Record<string, PageInfo> = {};
   const queue: string[] = [startUrl];
+  claimed.add(startUrl);
   let proxyUsed = 0;
   let totalRequests = 0;
 
-  while (queue.length > 0 && visited.size < maxPages) {
-    if (opts.signal?.aborted) break;
-    const url = queue.shift()!;
-    if (visited.has(url)) continue;
-
+  /** Worker fetches one URL, parses it, enqueues new URLs */
+  async function processOne(url: string): Promise<void> {
+    if (visited.size >= maxPages) return;
+    if (opts.signal?.aborted) return;
     totalRequests++;
     const { resp, body, viaProxy } = await smartFetch(url, opts.scraperApiKey);
     if (viaProxy) proxyUsed++;
     if (!resp || resp.status !== 200) {
-      visited.add(url); // mark to avoid retry
-      continue;
+      visited.add(url);
+      return;
     }
     const ct = resp.headers.get("content-type") || "";
-    if (!ct.includes("text/html")) continue;
+    if (!ct.includes("text/html")) return;
     if (!body) {
       visited.add(url);
-      continue;
+      return;
     }
-    const html = body;
 
     visited.add(url);
-    const $ = cheerio.load(html);
+    const $ = cheerio.load(body);
     const title = ($("title").first().text() || "").trim();
     const wordCount = ($("body").text() || "").trim().split(/\s+/).filter(Boolean).length;
     pageInfo[url] = { url, title, wordCount, status: resp.status };
 
     $("a[href]").each((_, el) => {
       const href = ($(el).attr("href") || "").trim();
-      if (!href || href.startsWith("#") || href.startsWith("mailto:") || href.startsWith("tel:") || href.startsWith("javascript:")) {
+      if (
+        !href ||
+        href.startsWith("#") ||
+        href.startsWith("mailto:") ||
+        href.startsWith("tel:") ||
+        href.startsWith("javascript:")
+      ) {
         return;
       }
       let absUrl: string;
@@ -189,18 +199,40 @@ export async function crawlWebsite(rawStartUrl: string, opts: CrawlOptions = {})
       if (!absUrl) return;
       if (isInternal(absUrl, baseDomain)) {
         edges.push([url, absUrl]);
-        if (!visited.has(absUrl) && !queue.includes(absUrl)) {
+        if (!claimed.has(absUrl) && visited.size + queue.length < maxPages * 2) {
+          claimed.add(absUrl);
           queue.push(absUrl);
         }
       }
     });
 
     opts.onProgress?.({ visited: visited.size, max: maxPages, currentUrl: url, viaProxy });
+  }
 
-    if (delayMs > 0 && queue.length > 0) {
-      await new Promise((r) => setTimeout(r, delayMs));
+  /** Worker loop: pulls from queue until empty or budget hit */
+  async function worker(): Promise<void> {
+    while (true) {
+      if (opts.signal?.aborted) return;
+      if (visited.size >= maxPages) return;
+      const next = queue.shift();
+      if (!next) {
+        // Queue temporarily empty — wait briefly for other workers to add more
+        await new Promise((r) => setTimeout(r, 30));
+        if (queue.length === 0) return;
+        continue;
+      }
+      try {
+        await processOne(next);
+      } catch {
+        // ignore per-page errors
+      }
+      if (delayMs > 0) await new Promise((r) => setTimeout(r, delayMs));
     }
   }
+
+  // Run N parallel workers
+  const workers = Array.from({ length: concurrency }, () => worker());
+  await Promise.all(workers);
 
   return {
     startUrl,

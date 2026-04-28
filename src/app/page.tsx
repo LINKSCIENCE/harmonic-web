@@ -7,11 +7,12 @@ import Image from "next/image";
 export default function HomePage() {
   const router = useRouter();
   const [domain, setDomain] = useState("");
+  const [email, setEmail] = useState("");
   const [maxPages, setMaxPages] = useState(100);
   const [error, setError] = useState("");
   const [submitting, setSubmitting] = useState(false);
 
-  function handleSubmit(e: React.FormEvent) {
+  async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
     setError("");
     const cleaned = domain.trim().replace(/^https?:\/\//, "").replace(/\/$/, "");
@@ -19,8 +20,18 @@ export default function HomePage() {
       setError("Enter a valid domain like wldm.io");
       return;
     }
+    if (!email.trim() || !email.includes("@")) {
+      setError("Enter a valid email so we can send you the report");
+      return;
+    }
     setSubmitting(true);
-    router.push(`/audit?domain=${encodeURIComponent(cleaned)}&max=${maxPages}`);
+    // Fire-and-forget lead capture — we don't block the audit on it
+    fetch("/api/lead", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ domain: cleaned, email: email.trim().toLowerCase(), maxPages }),
+    }).catch(() => {});
+    router.push(`/audit?domain=${encodeURIComponent(cleaned)}&max=${maxPages}&email=${encodeURIComponent(email.trim().toLowerCase())}`);
   }
 
   return (
@@ -50,22 +61,35 @@ export default function HomePage() {
           exactly which pages capture authority — and which are silently starving your SEO.
         </p>
 
-        <form onSubmit={handleSubmit} className="flex flex-col sm:flex-row gap-3 w-full max-w-xl mb-6">
+        <form onSubmit={handleSubmit} className="flex flex-col gap-3 w-full max-w-xl mb-6">
           <input
             type="text"
             value={domain}
             onChange={(e) => setDomain(e.target.value)}
             placeholder="yourdomain.com"
             disabled={submitting}
-            className="flex-1 px-5 py-4 bg-white border-2 border-[var(--wldm-black)] rounded-full text-base focus:outline-none focus:border-[var(--wldm-blue-dark)] disabled:opacity-60"
+            className="px-5 py-4 bg-white border-2 border-[var(--wldm-black)] rounded-full text-base focus:outline-none focus:border-[var(--wldm-blue-dark)] disabled:opacity-60"
           />
-          <button
-            type="submit"
-            disabled={submitting}
-            className="btn-pill btn-fluro disabled:opacity-60 disabled:cursor-not-allowed"
-          >
-            {submitting ? "Loading…" : "Analyze →"}
-          </button>
+          <div className="flex flex-col sm:flex-row gap-3">
+            <input
+              type="email"
+              value={email}
+              onChange={(e) => setEmail(e.target.value)}
+              placeholder="your@email.com"
+              disabled={submitting}
+              className="flex-1 px-5 py-4 bg-white border-2 border-[var(--wldm-black)] rounded-full text-base focus:outline-none focus:border-[var(--wldm-blue-dark)] disabled:opacity-60"
+            />
+            <button
+              type="submit"
+              disabled={submitting}
+              className="btn-pill btn-fluro disabled:opacity-60 disabled:cursor-not-allowed"
+            >
+              {submitting ? "Loading…" : "Analyze →"}
+            </button>
+          </div>
+          <p className="text-xs text-[var(--wldm-ink-40)] text-center">
+            We&apos;ll send you the full report by email.
+          </p>
         </form>
 
         {error && <p className="text-red-600 text-sm">{error}</p>}
