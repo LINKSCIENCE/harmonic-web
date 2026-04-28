@@ -1,6 +1,6 @@
 import Graph from "graphology";
 import pagerank from "graphology-metrics/centrality/pagerank";
-import { betweennessCentrality } from "graphology-metrics/centrality/betweenness";
+import betweennessCentrality from "graphology-metrics/centrality/betweenness";
 import closeness from "graphology-metrics/centrality/closeness";
 import hits from "graphology-metrics/centrality/hits";
 
@@ -124,7 +124,7 @@ export function analyzeGraph(
 
   let prMap: Record<string, number> = {};
   try {
-    prMap = pagerank(g, { alpha: 0.85 });
+    prMap = pagerank(g);
   } catch {
     prMap = Object.fromEntries(g.nodes().map((v) => [v, 1 / n]));
   }
