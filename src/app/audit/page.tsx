@@ -21,9 +21,10 @@ function AuditView() {
   const params = useSearchParams();
   const router = useRouter();
   const domain = params.get("domain") || "";
+  const maxPages = Math.min(Math.max(parseInt(params.get("max") || "100", 10) || 100, 5), 500);
   const [phase, setPhase] = useState<Phase>("idle");
   const [logs, setLogs] = useState<LogLine[]>([]);
-  const [progress, setProgress] = useState<ProgressEvent>({ visited: 0, max: 100, currentUrl: "", viaProxy: false });
+  const [progress, setProgress] = useState<ProgressEvent>({ visited: 0, max: maxPages, currentUrl: "", viaProxy: false });
   const [result, setResult] = useState<AuditResult | null>(null);
   const [error, setError] = useState<string>("");
   const startedRef = useRef(false);
@@ -40,13 +41,13 @@ function AuditView() {
       setLogs((prev) => [...prev, { ts: tsNow(), level, message }]);
 
     setPhase("running");
-    append("exec", `Initiating crawl on ${domain}`);
+    append("exec", `Initiating crawl on ${domain} (up to ${maxPages} pages)`);
 
     const ctrl = new AbortController();
     fetch("/api/audit", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ domain, maxPages: 100, delayMs: 200 }),
+      body: JSON.stringify({ domain, maxPages, delayMs: 200 }),
       signal: ctrl.signal,
     })
       .then(async (resp) => {
@@ -102,15 +103,12 @@ function AuditView() {
       });
 
     return () => ctrl.abort();
-  }, [domain, router]);
+  }, [domain, maxPages, router]);
 
   return (
     <main className="flex-1 flex flex-col">
-      <header className="px-8 py-6 flex items-center justify-between max-w-7xl mx-auto w-full">
+      <header className="px-8 py-6 max-w-7xl mx-auto w-full">
         <Image src="/wldm-logo.png" alt="WLDM" width={200} height={59} priority className="h-10 w-auto" />
-        <span className="hero-badge">
-          <span className="dot" /> WLDM.IO
-        </span>
       </header>
 
       {phase === "running" && (

@@ -7,6 +7,7 @@ import Image from "next/image";
 export default function HomePage() {
   const router = useRouter();
   const [domain, setDomain] = useState("");
+  const [maxPages, setMaxPages] = useState(100);
   const [error, setError] = useState("");
   const [submitting, setSubmitting] = useState(false);
 
@@ -19,13 +20,13 @@ export default function HomePage() {
       return;
     }
     setSubmitting(true);
-    router.push(`/audit?domain=${encodeURIComponent(cleaned)}`);
+    router.push(`/audit?domain=${encodeURIComponent(cleaned)}&max=${maxPages}`);
   }
 
   return (
     <main className="flex-1 flex flex-col">
       {/* Top bar with logo */}
-      <header className="px-8 py-6 flex items-center justify-between max-w-7xl mx-auto w-full">
+      <header className="px-8 py-6 max-w-7xl mx-auto w-full">
         <Image
           src="/wldm-logo.png"
           alt="WLDM"
@@ -34,9 +35,6 @@ export default function HomePage() {
           priority
           className="h-10 w-auto"
         />
-        <span className="hero-badge">
-          <span className="dot" /> WLDM.IO
-        </span>
       </header>
 
       {/* Hero */}
@@ -71,6 +69,29 @@ export default function HomePage() {
         </form>
 
         {error && <p className="text-red-600 text-sm">{error}</p>}
+
+        {/* Crawl size selector */}
+        <div className="mt-6 flex flex-wrap items-center justify-center gap-2 text-sm">
+          <span className="text-[var(--wldm-ink-60)] mr-1">Crawl up to</span>
+          {[50, 100, 250, 500].map((n) => (
+            <button
+              key={n}
+              type="button"
+              onClick={() => setMaxPages(n)}
+              className={`px-4 py-1.5 rounded-full border-2 font-[family-name:var(--font-chakra-petch)] font-semibold transition ${
+                maxPages === n
+                  ? "bg-[var(--wldm-black)] text-[var(--wldm-beige-50)] border-[var(--wldm-black)]"
+                  : "bg-transparent text-[var(--wldm-black)] border-[var(--wldm-black)] hover:bg-[var(--wldm-black)] hover:text-[var(--wldm-beige-50)]"
+              }`}
+            >
+              {n}
+            </button>
+          ))}
+          <span className="text-[var(--wldm-ink-60)] ml-1">pages</span>
+        </div>
+        <p className="text-xs text-[var(--wldm-ink-40)] mt-2">
+          Bigger crawls take longer. 500 pages can run 3–5 minutes on protected sites.
+        </p>
 
         <div className="mt-8 flex flex-wrap items-center justify-center gap-3">
           <span className="chip">Harmonic Centrality</span>
