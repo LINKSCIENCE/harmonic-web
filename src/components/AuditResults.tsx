@@ -1,8 +1,19 @@
 "use client";
 
-import { useMemo } from "react";
+import { useMemo, useState } from "react";
+import dynamic from "next/dynamic";
 import Link from "next/link";
 import type { AuditResult } from "@/lib/types";
+import { generateAuditPdf } from "@/lib/pdf";
+
+const HCGraph3D = dynamic(() => import("./HCGraph3D"), {
+  ssr: false,
+  loading: () => (
+    <div className="w-full h-[500px] rounded-2xl bg-[var(--wldm-black)] flex items-center justify-center text-[var(--wldm-taupe)]">
+      Loading 3D graph…
+    </div>
+  ),
+});
 
 const TIER_BADGE: Record<string, string> = {
   high: "bg-[var(--wldm-fluro)] border-[var(--wldm-black)]",
@@ -16,6 +27,19 @@ interface Props {
 
 export default function AuditResults({ result }: Props) {
   const { analysis, domain, elapsedMs, proxyUsed } = result;
+  const [generatingPdf, setGeneratingPdf] = useState(false);
+
+  async function handleDownloadPdf() {
+    setGeneratingPdf(true);
+    try {
+      await generateAuditPdf(result);
+    } catch (e) {
+      console.error("PDF generation failed", e);
+      alert("Could not generate PDF. Try refresh.");
+    } finally {
+      setGeneratingPdf(false);
+    }
+  }
 
   const stats = useMemo(() => {
     const tiers = { high: 0, medium: 0, low: 0 };
@@ -41,9 +65,18 @@ export default function AuditResults({ result }: Props) {
             {domain}
           </h1>
         </div>
-        <Link href="/" className="btn-pill btn-outline">
-          ← New audit
-        </Link>
+        <div className="flex gap-2">
+          <button
+            onClick={handleDownloadPdf}
+            disabled={generatingPdf}
+            className="btn-pill btn-fluro disabled:opacity-60 disabled:cursor-not-allowed"
+          >
+            {generatingPdf ? "Building PDF…" : "Download PDF ↓"}
+          </button>
+          <Link href="/" className="btn-pill btn-outline">
+            ← New audit
+          </Link>
+        </div>
       </div>
 
       {/* KPI row */}
@@ -80,6 +113,15 @@ export default function AuditResults({ result }: Props) {
             </>
           )}
         </p>
+      </Section>
+
+      {/* 3D graph */}
+      <Section title="Your Link Graph in 3D">
+        <p className="text-sm text-[var(--wldm-ink-60)] mb-4">
+          Drag to rotate · scroll to zoom · click any node for details. Pulsing red nodes are{" "}
+          <strong>orphans</strong> with zero incoming links.
+        </p>
+        <HCGraph3D nodes={analysis.nodes} edges={analysis.edges} />
       </Section>
 
       {/* Top pages */}
@@ -165,7 +207,7 @@ export default function AuditResults({ result }: Props) {
           Crawl summary: {result.totalRequests} requests, {proxyUsed} via proxy fallback,{" "}
           {(elapsedMs / 1000).toFixed(1)}s total.
         </span>
-        <span>WLDM · LinkScience · Harmonic Centrality</span>
+        <span>WLDM.IO · Harmonic Centrality</span>
       </div>
     </div>
   );

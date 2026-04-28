@@ -35,7 +35,7 @@ export default function HomePage() {
           className="h-10 w-auto"
         />
         <span className="hero-badge">
-          <span className="dot" /> LINKSCIENCE
+          <span className="dot" /> WLDM.IO
         </span>
       </header>
 
@@ -85,18 +85,18 @@ export default function HomePage() {
           {[
             {
               icon: "📈",
-              title: "Graph Metrics",
-              desc: "Harmonic centrality, PageRank, betweenness, closeness, and HITS scores — all the math, none of the spreadsheets.",
+              title: "See the math",
+              desc: "Which pages capture authority? Which bleed it? Six different scores, one clear picture.",
             },
             {
               icon: "🕸️",
-              title: "3D Visualization",
-              desc: "Interactive WebGL graph. Spin your site's link architecture and spot orphan pages instantly.",
+              title: "Spin your site",
+              desc: "Interactive 3D map of your internal link graph. Orphan pages light up red — instantly.",
             },
             {
               icon: "📄",
-              title: "Branded PDF",
-              desc: "Download a client-ready report with all findings and concrete recommendations.",
+              title: "Take it with you",
+              desc: "Download a clean report you can share with your team or attach to your next SEO call.",
             },
           ].map((f) => (
             <div key={f.title} className="card-brutal">
@@ -155,7 +155,7 @@ export default function HomePage() {
           height={35}
           className="h-7 w-auto mx-auto mb-3 opacity-60"
         />
-        <p>LinkScience · Internal Link Graph Analysis · WLDM 2026</p>
+        <p>WLDM.IO · Harmonic Centrality · Internal Link Graph Analysis</p>
       </footer>
     </main>
   );

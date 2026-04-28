@@ -109,7 +109,7 @@ function AuditView() {
       <header className="px-8 py-6 flex items-center justify-between max-w-7xl mx-auto w-full">
         <Image src="/wldm-logo.png" alt="WLDM" width={200} height={59} priority className="h-10 w-auto" />
         <span className="hero-badge">
-          <span className="dot" /> LINKSCIENCE
+          <span className="dot" /> WLDM.IO
         </span>
       </header>
 
