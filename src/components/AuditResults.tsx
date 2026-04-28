@@ -7,13 +7,16 @@ import type { AuditResult } from "@/lib/types";
 import { generateAuditPdf } from "@/lib/pdf";
 import {
   TopPagesChart,
+  TopBottomComparison,
   DistributionChart,
+  DistributionStats,
   HcVsPrChart,
   TierDonut,
   CentralityRadar,
   DepthChart,
   LinkProfileChart,
 } from "./Charts";
+import ScienceCard from "./ScienceCard";
 
 const HCGraph3D = dynamic(() => import("./HCGraph3D"), {
   ssr: false,
@@ -33,6 +36,15 @@ const HCSkyline3D = dynamic(() => import("./HCSkyline3D"), {
   ),
 });
 
+const QualityScatter3D = dynamic(() => import("./QualityScatter3D"), {
+  ssr: false,
+  loading: () => (
+    <div className="w-full h-[500px] rounded-2xl bg-[var(--wldm-black)] flex items-center justify-center text-[var(--wldm-taupe)]">
+      Loading scatter…
+    </div>
+  ),
+});
+
 interface Props {
   result: AuditResult;
 }
@@ -47,6 +59,7 @@ const TABS = [
   { id: "tier", label: "Tier Breakdown" },
   { id: "radar", label: "Centrality Radar" },
   { id: "graph3d", label: "3D Network" },
+  { id: "quality3d", label: "3D Quality" },
   { id: "skyline", label: "3D Skyline" },
 ] as const;
 type TabId = (typeof TABS)[number]["id"];
@@ -163,86 +176,112 @@ export default function AuditResults({ result }: Props) {
 
       <div className="pt-6">
         {activeTab === "overview" && (
-          <Overview analysis={analysis} stats={stats} clusters={clusters} />
+          <>
+            <Overview analysis={analysis} stats={stats} clusters={clusters} />
+            <ScienceCard tabId="overview" />
+          </>
         )}
 
         {activeTab === "top" && (
           <Section title="Top Pages by Harmonic Centrality">
             <TopPagesChart nodes={analysis.nodes} n={20} />
+            <h3 className="text-lg font-[family-name:var(--font-chakra-petch)] font-bold mt-8 mb-3">
+              Top vs Bottom — head-to-head
+            </h3>
+            <TopBottomComparison nodes={analysis.nodes} />
             <TopPagesTable result={result} />
+            <ScienceCard tabId="top" />
           </Section>
         )}
 
         {activeTab === "distribution" && (
           <Section title="Harmonic Centrality Distribution">
             <DistributionChart nodes={analysis.nodes} />
-            <p className="text-sm text-[var(--wldm-ink-60)] mt-3">
-              {analysis.diagnostics.hcCompressed
-                ? "⚠️ Distribution is compressed — most pages have similar HC. Healthy sites usually show a long-tail with a few high-authority pages."
-                : "Healthy distribution typically shows a long tail — most pages with low HC, a few high-HC hubs at the right end."}
-            </p>
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mt-6">
+              <div>
+                <h3 className="text-sm font-[family-name:var(--font-chakra-petch)] uppercase tracking-wider font-bold mb-2">
+                  Statistics
+                </h3>
+                <DistributionStats nodes={analysis.nodes} />
+              </div>
+              <div>
+                <h3 className="text-sm font-[family-name:var(--font-chakra-petch)] uppercase tracking-wider font-bold mb-2">
+                  Verdict
+                </h3>
+                <div
+                  className="card-brutal !p-5"
+                  style={{
+                    background: analysis.diagnostics.hcCompressed ? "var(--wldm-fluro)" : "var(--wldm-blue)",
+                  }}
+                >
+                  <p className="text-sm text-[var(--wldm-black)] leading-relaxed">
+                    {analysis.diagnostics.hcCompressed
+                      ? "⚠️ Distribution is compressed — most pages have similar HC. Your site lacks a clear authority hierarchy. Healthy sites show a long-tail with a few high-authority hubs."
+                      : "Healthy distribution — long tail with most pages at low HC, a few high-HC hubs at the right end. Your site has a clear authority hierarchy."}
+                  </p>
+                </div>
+              </div>
+            </div>
+            <ScienceCard tabId="distribution" />
           </Section>
         )}
 
         {activeTab === "scatter" && (
           <Section title="HC vs PageRank">
             <HcVsPrChart nodes={analysis.nodes} degenerate={analysis.diagnostics.pagerankDegenerate} />
-            {!analysis.diagnostics.pagerankDegenerate && (
-              <div
-                className="rounded-2xl p-4 border border-[var(--wldm-black)] text-sm mt-4"
-                style={{ background: "var(--wldm-blue)", boxShadow: "4px 4px 0 var(--wldm-black)" }}
-              >
-                <strong className="block mb-1 font-[family-name:var(--font-chakra-petch)] uppercase">
-                  How to read this
-                </strong>
-                <strong>Top-right</strong> = highly reachable AND authoritative (your strongest pages).{" "}
-                <strong>High HC, low PR</strong> = easy to find but lacks authority — build more external links.{" "}
-                <strong>Low HC, high PR</strong> = receives authority but hard to discover — improve internal linking.
-              </div>
-            )}
+            <ScienceCard tabId="scatter" />
           </Section>
         )}
 
         {activeTab === "depth" && (
           <Section title="Click Depth from Homepage">
             <DepthChart histogram={analysis.depthHistogram} />
+            <ScienceCard tabId="depth" />
           </Section>
         )}
 
         {activeTab === "link-profile" && (
           <Section title="In-Links vs Out-Links">
             <LinkProfileChart nodes={analysis.nodes} />
+            <ScienceCard tabId="link-profile" />
           </Section>
         )}
 
         {activeTab === "tier" && (
           <Section title="Authority Tier Breakdown">
             <TierDonut nodes={analysis.nodes} />
+            <ScienceCard tabId="tier" />
           </Section>
         )}
 
         {activeTab === "radar" && (
           <Section title="Top 5 Pages — Centrality Radar">
             <CentralityRadar nodes={analysis.nodes} />
+            <ScienceCard tabId="radar" />
           </Section>
         )}
 
         {activeTab === "graph3d" && (
           <Section title="Your Link Graph in 3D">
-            <p className="text-sm text-[var(--wldm-ink-60)] mb-4">
-              Drag to rotate · scroll to zoom · click any node for details. Pulsing red nodes are{" "}
-              <strong>orphans</strong> with zero incoming links.
-            </p>
             <HCGraph3D nodes={analysis.nodes} edges={analysis.edges} />
+            <ScienceCard tabId="graph3d" />
+          </Section>
+        )}
+
+        {activeTab === "quality3d" && (
+          <Section title="3D Quality Scatter">
+            <p className="text-sm text-[var(--wldm-ink-60)] mb-4">
+              Each sphere = one page positioned by <strong>out-links × in-links × betweenness</strong>. Bigger = higher HC. Spot link hubs (top-right-back), specialists (high in, low out), and dead-ends (low everything) at a glance.
+            </p>
+            <QualityScatter3D nodes={analysis.nodes} />
+            <ScienceCard tabId="link-profile" />
           </Section>
         )}
 
         {activeTab === "skyline" && (
           <Section title="HC Skyline by URL Cluster">
-            <p className="text-sm text-[var(--wldm-ink-60)] mb-4">
-              Bar height = harmonic centrality. Each cluster (URL section) shows its top pages. Quick way to see which sections of your site capture authority.
-            </p>
             <HCSkyline3D nodes={analysis.nodes} />
+            <ScienceCard tabId="skyline" />
           </Section>
         )}
       </div>

@@ -59,6 +59,123 @@ const tooltipStyle = {
   padding: "8px 12px",
 } as const;
 
+/* ── TOP vs BOTTOM COMPARISON ─────────────────────────────────── */
+
+export function TopBottomComparison({ nodes }: { nodes: NodeMetrics[] }) {
+  const data = useMemo(() => {
+    const sorted = [...nodes].sort((a, b) => b.harmonic - a.harmonic);
+    const n = Math.min(10, Math.floor(sorted.length / 2));
+    if (n < 2) return [];
+    const top = sorted.slice(0, n);
+    const bottom = sorted.slice(-n).reverse();
+    return Array.from({ length: n }, (_, i) => ({
+      rank: `#${i + 1}`,
+      top: Number((top[i].harmonic * 100).toFixed(1)),
+      bottom: Number((bottom[i].harmonic * 100).toFixed(1)),
+      topPath: urlPath(top[i].url).slice(0, 30),
+      bottomPath: urlPath(bottom[i].url).slice(0, 30),
+    }));
+  }, [nodes]);
+
+  if (data.length < 2) return <Empty msg="Need at least 4 pages" />;
+
+  return (
+    <div className="card-brutal !p-4 bg-white">
+      <ResponsiveContainer width="100%" height={320}>
+        <BarChart data={data} margin={{ left: 5, right: 10, top: 10, bottom: 30 }}>
+          <CartesianGrid strokeDasharray="2 4" stroke={COLORS.bluePale} />
+          <XAxis dataKey="rank" stroke={COLORS.taupe} tick={{ fontSize: 11, fill: COLORS.black }} />
+          <YAxis stroke={COLORS.taupe} tick={{ fontSize: 11, fill: COLORS.black }} domain={[0, 100]} />
+          <Tooltip
+            contentStyle={tooltipStyle}
+            content={({ payload, label }) => {
+              if (!payload?.length) return null;
+              const top = payload.find((p) => p.dataKey === "top");
+              const bot = payload.find((p) => p.dataKey === "bottom");
+              const item = top?.payload ?? bot?.payload;
+              return (
+                <div style={tooltipStyle}>
+                  <div className="font-semibold mb-1">{label}</div>
+                  <div style={{ color: COLORS.fluro }}>Top: {item?.topPath} ({top?.value})</div>
+                  <div style={{ color: COLORS.taupe }}>Bottom: {item?.bottomPath} ({bot?.value})</div>
+                </div>
+              );
+            }}
+          />
+          <Legend wrapperStyle={{ fontSize: 11 }} />
+          <Bar dataKey="top" name="Top pages" fill={COLORS.fluro} stroke={COLORS.black} strokeWidth={1} radius={[4, 4, 0, 0]} />
+          <Bar dataKey="bottom" name="Bottom pages" fill={COLORS.taupe} stroke={COLORS.black} strokeWidth={1} radius={[4, 4, 0, 0]} />
+        </BarChart>
+      </ResponsiveContainer>
+      <p className="text-xs text-[var(--wldm-ink-60)] mt-2 text-center">
+        Top vs bottom {data.length} pages compared head-to-head. The gap is your authority concentration.
+      </p>
+    </div>
+  );
+}
+
+/* ── DISTRIBUTION PERCENTILES TABLE ─────────────────────────────── */
+
+export function DistributionStats({ nodes }: { nodes: NodeMetrics[] }) {
+  const stats = useMemo(() => {
+    if (nodes.length === 0) return null;
+    const vals = nodes.map((n) => n.harmonic).sort((a, b) => a - b);
+    const pct = (p: number) => vals[Math.floor((vals.length - 1) * p)];
+    const mean = vals.reduce((a, b) => a + b, 0) / vals.length;
+    const variance = vals.reduce((a, b) => a + (b - mean) ** 2, 0) / vals.length;
+    return {
+      mean,
+      std: Math.sqrt(variance),
+      min: vals[0],
+      max: vals[vals.length - 1],
+      p10: pct(0.1),
+      p25: pct(0.25),
+      p50: pct(0.5),
+      p75: pct(0.75),
+      p90: pct(0.9),
+      p95: pct(0.95),
+      p99: pct(0.99),
+    };
+  }, [nodes]);
+
+  if (!stats) return null;
+
+  const rows: Array<[string, number]> = [
+    ["Mean", stats.mean],
+    ["Std dev", stats.std],
+    ["Min", stats.min],
+    ["P10", stats.p10],
+    ["P25", stats.p25],
+    ["Median (P50)", stats.p50],
+    ["P75", stats.p75],
+    ["P90", stats.p90],
+    ["P95", stats.p95],
+    ["P99", stats.p99],
+    ["Max", stats.max],
+  ];
+
+  return (
+    <div className="card-brutal !p-0 bg-white overflow-hidden">
+      <table className="w-full text-sm">
+        <thead className="bg-[var(--wldm-blue-pale)] font-[family-name:var(--font-chakra-petch)] uppercase tracking-wider text-xs">
+          <tr>
+            <th className="text-left p-3">Statistic</th>
+            <th className="text-right p-3">Value</th>
+          </tr>
+        </thead>
+        <tbody>
+          {rows.map(([label, value]) => (
+            <tr key={label} className="border-t border-[var(--wldm-blue-pale)]">
+              <td className="p-3 text-[var(--wldm-black)]">{label}</td>
+              <td className="p-3 text-right tabular-nums font-semibold">{value.toFixed(3)}</td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </div>
+  );
+}
+
 /* ── 1. TOP PAGES BAR CHART ────────────────────────────────────── */
 
 export function TopPagesChart({ nodes, n = 20 }: { nodes: NodeMetrics[]; n?: number }) {
